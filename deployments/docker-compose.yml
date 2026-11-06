@@ -1,0 +1,69 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: taskforge-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: taskforge-postgres
+    environment:
+      POSTGRES_USER: taskforge
+      POSTGRES_PASSWORD: taskforge_dev_password
+      POSTGRES_DB: taskforge
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taskforge -d taskforge"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  api:
+    build:
+      context: ..
+      dockerfile: Dockerfile.api
+    container_name: taskforge-api
+    ports:
+      - "8080:8080"
+    environment:
+      REDIS_ADDR: redis:6379
+      DATABASE_URL:
+        postgres://taskforge:taskforge_dev_password@postgres:5432/taskforge?sslmode=disable
+    depends_on:
+       postgres:
+         condition: service_healthy
+       redis:
+          condition: service_healthy
+    restart: unless-stopped
+  worker:
+    build:
+      context: ..
+      dockerfile: Dockerfile.worker
+    container_name: taskforge-worker
+    environment:
+      REDIS_ADDR: redis:6379
+      DATABASE_URL:
+        postgres://taskforge:taskforge_dev_password@postgres:5432/taskforge?sslmode=disable
+    depends_on:
+       postgres:
+         condition: service_healthy
+       redis:
+          condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
